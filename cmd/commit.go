@@ -1,10 +1,10 @@
 package cmd
 
 import (
-	"fmt"
-
-	"github.com/spf13/cobra"
 	"github.com/lucasvavon/gtc/internal/models"
+	"github.com/lucasvavon/gtc/internal/output"
+	"github.com/lucasvavon/gtc/internal/ui"
+	"github.com/spf13/cobra"
 )
 
 // commit flags
@@ -12,6 +12,7 @@ var (
 	commitBranch string
 	commitAuthor string
 	commitLimit  int
+	commitFormat string
 )
 
 // commitCmd is the parent for all commit sub-commands.
@@ -29,16 +30,25 @@ var commitListCmd = &cobra.Command{
 			return err
 		}
 
-		opts := models.CommitListOptions{
+		commits, err := p.ListCommits(cmd.Context(), models.CommitListOptions{
 			Branch: commitBranch,
 			Author: commitAuthor,
 			Limit:  commitLimit,
+		})
+		if err != nil {
+			return err
 		}
 
-		_ = p
-		_ = opts
-		fmt.Println("commit list: not yet implemented")
-		return nil
+		fmt, err := output.ParseFormat(commitFormat)
+		if err != nil {
+			return err
+		}
+
+		if fmt == output.FormatTable {
+			print(ui.RenderCommitTable(commits))
+			return nil
+		}
+		return output.New(fmt).Print(commits)
 	},
 }
 
@@ -46,6 +56,7 @@ func init() {
 	commitListCmd.Flags().StringVar(&commitBranch, "branch", "", "filter by branch name")
 	commitListCmd.Flags().StringVar(&commitAuthor, "author", "", "filter by author username")
 	commitListCmd.Flags().IntVar(&commitLimit, "limit", 30, "maximum number of results")
+	commitListCmd.Flags().StringVar(&commitFormat, "format", "table", "output format: table|json|yaml")
 
 	commitCmd.AddCommand(commitListCmd)
 }

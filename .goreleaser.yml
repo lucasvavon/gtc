@@ -1,0 +1,200 @@
+# GoReleaser v2 — https://goreleaser.com/customization/
+version: 2
+
+project_name: gtc
+
+before:
+  hooks:
+    - go mod tidy
+
+# ── Compilation ───────────────────────────────────────────────────────────────
+builds:
+  - id: gtc
+    main: .
+    binary: gtc
+    env:
+      - CGO_ENABLED=0          # binaire statique, pas de libc nécessaire
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w                  # supprime les symboles de debug (~30 % plus petit)
+      - -X github.com/lucasvavon/gtc/cmd.Version={{ .Version }}
+    mod_timestamp: "{{ .CommitTimestamp }}"   # builds reproductibles
+
+# ── Archives ──────────────────────────────────────────────────────────────────
+archives:
+  - id: default
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README*
+      - LICENSE*
+
+# ── Checksums ─────────────────────────────────────────────────────────────────
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
+  algorithm: sha256
+
+# ── Changelog automatique ─────────────────────────────────────────────────────
+changelog:
+  sort: asc
+  use: github
+  groups:
+    - title: "✨ Nouveautés"
+      regexp: "^feat"
+      order: 0
+    - title: "🐛 Correctifs"
+      regexp: "^fix"
+      order: 1
+    - title: "⚡ Performances"
+      regexp: "^perf"
+      order: 2
+    - title: "📦 Autres"
+      order: 999
+  filters:
+    exclude:
+      - "^chore"
+      - "^docs"
+      - "^test"
+      - "^ci"
+      - "Merge pull request"
+      - "Merge branch"
+
+# ── GitHub Release ────────────────────────────────────────────────────────────
+release:
+  github:
+    owner: lucasvavon
+    name: gtc
+  prerelease: auto      # tags vX.Y.Z-beta.N → pre-release automatiquement
+  make_latest: true
+  footer: |
+    ## Installation
+
+    **Homebrew** (macOS / Linux) :
+    ```sh
+    brew install lucasvavon/tap/gtc
+    ```
+
+    **Scoop** (Windows) :
+    ```sh
+    scoop bucket add lucasvavon https://github.com/lucasvavon/scoop-bucket
+    scoop install gtc
+    ```
+
+    **Docker** :
+    ```sh
+    docker run --rm -v ~/.gtc.yaml:/root/.gtc.yaml ghcr.io/lucasvavon/gtc pr list
+    ```
+
+    **Téléchargement direct** (Linux amd64) :
+    ```sh
+    curl -sSL https://github.com/lucasvavon/gtc/releases/latest/download/gtc_linux_amd64.tar.gz \
+      | tar xz && sudo mv gtc /usr/local/bin/
+    ```
+
+# ── Homebrew tap ──────────────────────────────────────────────────────────────
+brews:
+  - name: gtc
+    repository:
+      owner: lucasvavon
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+    homepage: "https://github.com/lucasvavon/gtc"
+    description: "Git Tool CLI — query PRs, branches, commits and CI across providers"
+    license: MIT
+    install: bin.install "gtc"
+    test: system "#{bin}/gtc version"
+    skip_upload: "{{ if .Env.HOMEBREW_TAP_TOKEN }}false{{ else }}true{{ end }}"
+
+# ── Scoop bucket (Windows) ────────────────────────────────────────────────────
+# Prérequis : créer le repo public github.com/lucasvavon/scoop-bucket
+scoops:
+  - repository:
+      owner: lucasvavon
+      name: scoop-bucket
+      token: "{{ .Env.SCOOP_TOKEN }}"
+    homepage: "https://github.com/lucasvavon/gtc"
+    description: "Git Tool CLI — query PRs, branches, commits and CI across providers"
+    license: MIT
+    skip_upload: "{{ if .Env.SCOOP_TOKEN }}false{{ else }}true{{ end }}"
+
+# ── Paquets Linux (.deb / .rpm / .apk) ───────────────────────────────────────
+nfpms:
+  - id: packages
+    package_name: gtc
+    vendor: lucasvavon
+    homepage: https://github.com/lucasvavon/gtc
+    maintainer: Lucas Vavon
+    description: Git Tool CLI — query PRs, branches, commits and CI across providers
+    license: MIT
+    formats:
+      - deb    # apt install ./gtc_*.deb
+      - rpm    # dnf install ./gtc_*.rpm
+      - apk    # Alpine Linux
+    bindir: /usr/bin
+
+# ── Docker multi-arch → GHCR ─────────────────────────────────────────────────
+# Utilise GITHUB_TOKEN (déjà disponible) — aucun secret supplémentaire
+dockers:
+  - id: linux-amd64
+    goos: linux
+    goarch: amd64
+    image_templates:
+      - "ghcr.io/lucasvavon/gtc:{{ .Tag }}-amd64"
+      - "ghcr.io/lucasvavon/gtc:v{{ .Major }}-amd64"
+      - "ghcr.io/lucasvavon/gtc:latest-amd64"
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.description=Git Tool CLI"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.source={{ .GitURL }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.licenses=MIT"
+
+  - id: linux-arm64
+    goos: linux
+    goarch: arm64
+    image_templates:
+      - "ghcr.io/lucasvavon/gtc:{{ .Tag }}-arm64"
+      - "ghcr.io/lucasvavon/gtc:v{{ .Major }}-arm64"
+      - "ghcr.io/lucasvavon/gtc:latest-arm64"
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.description=Git Tool CLI"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.source={{ .GitURL }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.licenses=MIT"
+
+# Manifestes multi-arch (combine amd64 + arm64 sous un seul tag)
+docker_manifests:
+  - name_template: "ghcr.io/lucasvavon/gtc:{{ .Tag }}"
+    image_templates:
+      - "ghcr.io/lucasvavon/gtc:{{ .Tag }}-amd64"
+      - "ghcr.io/lucasvavon/gtc:{{ .Tag }}-arm64"
+  - name_template: "ghcr.io/lucasvavon/gtc:v{{ .Major }}"
+    image_templates:
+      - "ghcr.io/lucasvavon/gtc:v{{ .Major }}-amd64"
+      - "ghcr.io/lucasvavon/gtc:v{{ .Major }}-arm64"
+  - name_template: "ghcr.io/lucasvavon/gtc:latest"
+    image_templates:
+      - "ghcr.io/lucasvavon/gtc:latest-amd64"
+      - "ghcr.io/lucasvavon/gtc:latest-arm64"

@@ -3,13 +3,13 @@ package gitlab
 import (
 	"fmt"
 
-	"github.com/xanzy/go-gitlab"
 	"github.com/lucasvavon/gtc/config"
+	"github.com/xanzy/go-gitlab"
 )
 
 // Client wraps the go-gitlab client and exposes helpers used by services.
 type Client struct {
-	gl  *gitlab.Client
+	gl  *gitlab.Client //nolint:staticcheck
 	cfg *config.Config
 }
 
@@ -26,7 +26,7 @@ func New(cfg *config.Config) (*Client, error) {
 		gitlab.WithBaseURL(cfg.BaseURL),
 	}
 
-	gl, err := gitlab.NewClient(cfg.Token, opts...)
+	gl, err := gitlab.NewClient(cfg.Token, opts...) //nolint:staticcheck
 	if err != nil {
 		return nil, fmt.Errorf("creating gitlab client: %w", err)
 	}
@@ -35,7 +35,7 @@ func New(cfg *config.Config) (*Client, error) {
 }
 
 // GL exposes the underlying go-gitlab client to service packages.
-func (c *Client) GL() *gitlab.Client { return c.gl }
+func (c *Client) GL() *gitlab.Client { return c.gl } //nolint:staticcheck
 
 // ResolveRepos returns the repos list from flags if provided,
 // otherwise falls back to the ones defined in config.
