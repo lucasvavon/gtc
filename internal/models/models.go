@@ -50,12 +50,12 @@ type Branch struct {
 
 // Commit represents a single VCS commit.
 type Commit struct {
-	SHA     string    `json:"sha"`
-	ShortSHA string   `json:"short_sha"`
-	Message string    `json:"message"`
-	Author  string    `json:"author"`
-	Date    time.Time `json:"date"`
-	Branch  string    `json:"branch"`
+	SHA      string    `json:"sha"`
+	ShortSHA string    `json:"short_sha"`
+	Message  string    `json:"message"`
+	Author   string    `json:"author"`
+	Date     time.Time `json:"date"`
+	Branch   string    `json:"branch"`
 }
 
 // CommitListOptions filters commits returned by a provider.

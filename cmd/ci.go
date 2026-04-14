@@ -1,10 +1,13 @@
 package cmd
 
 import (
-	"fmt"
-
+	"github.com/lucasvavon/gtc/internal/output"
+	"github.com/lucasvavon/gtc/internal/ui"
 	"github.com/spf13/cobra"
 )
+
+// ci flags
+var ciFormat string
 
 // ciCmd is the parent for all CI sub-commands.
 var ciCmd = &cobra.Command{
@@ -17,7 +20,7 @@ var ciStatusCmd = &cobra.Command{
 	Short: "Show CI pipeline status for a ref (branch, tag or SHA)",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ref := ""
+		ref := "HEAD"
 		if len(args) == 1 {
 			ref = args[0]
 		}
@@ -27,16 +30,25 @@ var ciStatusCmd = &cobra.Command{
 			return err
 		}
 
-		_ = p
-		if ref != "" {
-			fmt.Printf("ci status %s: not yet implemented\n", ref)
-		} else {
-			fmt.Println("ci status: not yet implemented")
+		status, err := p.GetCIStatus(cmd.Context(), ref)
+		if err != nil {
+			return err
 		}
-		return nil
+
+		fmt, err := output.ParseFormat(ciFormat)
+		if err != nil {
+			return err
+		}
+
+		if fmt == output.FormatTable {
+			print(ui.RenderCIStatus(status))
+			return nil
+		}
+		return output.New(fmt).Print(status)
 	},
 }
 
 func init() {
+	ciStatusCmd.Flags().StringVar(&ciFormat, "format", "table", "output format: table|json|yaml")
 	ciCmd.AddCommand(ciStatusCmd)
 }
