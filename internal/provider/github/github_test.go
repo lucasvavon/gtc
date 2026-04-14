@@ -194,7 +194,7 @@ func TestListPullRequests_Basic(t *testing.T) {
 
 func TestListPullRequests_StateMapping(t *testing.T) {
 	cases := []struct {
-		state       string
+		state        string
 		wantAPIState string
 	}{
 		{"open", "open"},
@@ -223,7 +223,7 @@ func TestListPullRequests_MergedFilter(t *testing.T) {
 	mergedAt := fixedTime().Format(time.RFC3339)
 
 	prs := []any{
-		prFixture(1, "Open PR", "closed", "alice", nil),                         // no merged_at → excluded
+		prFixture(1, "Open PR", "closed", "alice", nil),                                   // no merged_at → excluded
 		prFixture(2, "Merged PR", "closed", "bob", map[string]any{"merged_at": mergedAt}), // merged_at set → included
 	}
 
@@ -647,9 +647,9 @@ func TestInit_RegistersProvider(t *testing.T) {
 func TestShortSHA(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"abc1234def5678", "abc1234"},
-		{"abc1234", "abc1234"},         // exactly 7
-		{"abc12", "abc12"},             // shorter than 7
-		{"", ""},                       // empty
+		{"abc1234", "abc1234"}, // exactly 7
+		{"abc12", "abc12"},     // shorter than 7
+		{"", ""},               // empty
 	}
 	for _, c := range cases {
 		if got := shortSHA(c.in); got != c.want {
@@ -660,9 +660,9 @@ func TestShortSHA(t *testing.T) {
 
 func TestResolveState(t *testing.T) {
 	cases := []struct {
-		in            string
-		wantState     string
-		wantFiltered  bool
+		in           string
+		wantState    string
+		wantFiltered bool
 	}{
 		{"open", "open", false},
 		{"", "open", false},

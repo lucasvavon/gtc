@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/spf13/cobra"
 	"github.com/lucasvavon/gtc/internal/models"
+	"github.com/lucasvavon/gtc/internal/output"
+	"github.com/lucasvavon/gtc/internal/ui"
+	"github.com/spf13/cobra"
 )
 
 // pr flags
@@ -13,6 +15,7 @@ var (
 	prState  string
 	prAuthor string
 	prLimit  int
+	prFormat string
 )
 
 // prCmd is the parent for all pull-request sub-commands.
@@ -30,16 +33,25 @@ var prListCmd = &cobra.Command{
 			return err
 		}
 
-		opts := models.PRListOptions{
+		prs, err := p.ListPullRequests(cmd.Context(), models.PRListOptions{
 			State:  prState,
 			Author: prAuthor,
 			Limit:  prLimit,
+		})
+		if err != nil {
+			return err
 		}
 
-		_ = p
-		_ = opts
-		fmt.Println("pr list: not yet implemented")
-		return nil
+		fmt, err := output.ParseFormat(prFormat)
+		if err != nil {
+			return err
+		}
+
+		if fmt == output.FormatTable {
+			print(ui.RenderPRTable(prs))
+			return nil
+		}
+		return output.New(fmt).Print(prs)
 	},
 }
 
@@ -58,17 +70,31 @@ var prShowCmd = &cobra.Command{
 			return err
 		}
 
-		_ = p
-		fmt.Printf("pr show %d: not yet implemented\n", id)
-		return nil
+		pr, err := p.GetPullRequest(cmd.Context(), id)
+		if err != nil {
+			return err
+		}
+
+		fmt, err := output.ParseFormat(prFormat)
+		if err != nil {
+			return err
+		}
+
+		if fmt == output.FormatTable {
+			print(ui.RenderPRDetail(pr))
+			return nil
+		}
+		return output.New(fmt).Print(pr)
 	},
 }
 
 func init() {
-	// list flags
 	prListCmd.Flags().StringVar(&prState, "state", "open", "filter by state: open|closed|merged|all")
 	prListCmd.Flags().StringVar(&prAuthor, "author", "", "filter by author username")
 	prListCmd.Flags().IntVar(&prLimit, "limit", 30, "maximum number of results")
+	prListCmd.Flags().StringVar(&prFormat, "format", "table", "output format: table|json|yaml")
+
+	prShowCmd.Flags().StringVar(&prFormat, "format", "table", "output format: table|json|yaml")
 
 	prCmd.AddCommand(prListCmd, prShowCmd)
 }

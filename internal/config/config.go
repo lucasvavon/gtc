@@ -63,7 +63,7 @@ func LoadFrom(path string) (*ProjectConfig, error) {
 		}
 		return nil, fmt.Errorf("opening config file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var cfg ProjectConfig
 	dec := yaml.NewDecoder(f)
@@ -78,85 +78,181 @@ func LoadFrom(path string) (*ProjectConfig, error) {
 // RunInteractiveInit
 // ---------------------------------------------------------------------------
 
-// RunInteractiveInit guides the user through creating a .gtc.yaml at the root
-// of the current git repository. It pre-fills values from the git remote when
-// possible and writes the result to <git-root>/.gtc.yaml.
-func RunInteractiveInit(in io.Reader, out io.Writer) error {
+// RunInteractiveInit creates a .gtc.yaml at the root of the current git
+// repository. It attempts to auto-detect provider, owner, repo, and token
+// from the git remote and environment variables.
+//
+// Fast path — when the remote and a token are both detected automatically,
+// the user only needs to confirm (or pass autoYes=true to skip even that).
+//
+// Interactive path — whenever information is missing the user is prompted;
+// detected values are offered as defaults so a single Enter suffices.
+func RunInteractiveInit(in io.Reader, out io.Writer, autoYes bool) error {
 	// 1. Must be inside a git repository.
 	root, err := FindGitRoot()
 	if err != nil {
 		return fmt.Errorf("gtc init must be run inside a git repository: %w", err)
 	}
 
-	// 2. Try to pre-fill from the git remote (best-effort; ignore errors).
-	var remote *RemoteInfo
-	remote, _ = DetectRemote()
+	destPath := filepath.Join(root, ".gtc.yaml")
 
-	r := bufio.NewReader(in)
-	fmt.Fprintln(out, "gtc — interactive project setup")
-	fmt.Fprintln(out, strings.Repeat("─", 42))
-
-	// 3a. Provider name
-	providerSuggestion := ""
-	if remote != nil && remote.Provider != "" {
-		providerSuggestion = remote.Provider
+	// 2. Detect remote and token from the environment.
+	remote, _ := DetectRemote()
+	detectedToken, tokenEnv := "", ""
+	if remote != nil {
+		detectedToken, tokenEnv = detectToken(remote.Provider)
 	}
-	providerName := prompt(r, out, "Provider [github|gitlab|gitea|bitbucket]", providerSuggestion)
 
-	// 3b. Base URL — only relevant for self-hosted or non-SaaS providers
+	// ── Fast path ────────────────────────────────────────────────────────────
+	// Everything we need is available without user input.
+	if remote != nil && remote.Provider != "" && remote.Owner != "" &&
+		remote.Repo != "" && detectedToken != "" {
+
+		printAutoSummary(out, remote, tokenEnv, destPath)
+
+		confirmed := autoYes
+		if !confirmed {
+			r := bufio.NewReader(in)
+			ans := prompt(r, out, "Créer .gtc.yaml avec ces paramètres ? [Y/n]", "Y")
+			confirmed = strings.ToLower(strings.TrimSpace(ans)) != "n"
+		}
+
+		if confirmed {
+			cfg := buildProjectConfig(
+				remote.Provider,
+				defaultBaseURL(remote.Provider, remote),
+				remote.Owner, remote.Repo,
+				detectedToken, "1m",
+			)
+			return writeAndReport(out, destPath, cfg)
+		}
+
+		// User declined → fall through to interactive with pre-filled values.
+		_, _ = fmt.Fprintln(out, "")
+	}
+
+	// ── Interactive path ──────────────────────────────────────────────────────
+	r := bufio.NewReader(in)
+	_, _ = fmt.Fprintln(out, "gtc — interactive project setup")
+	_, _ = fmt.Fprintln(out, strings.Repeat("─", 42))
+
+	providerDefault := ""
+	if remote != nil {
+		providerDefault = remote.Provider
+	}
+	providerName := prompt(r, out, "Provider [github|gitlab|gitea|bitbucket]", providerDefault)
+
 	var baseURL string
 	if needsBaseURL(providerName) {
-		defaultBase := defaultBaseURL(providerName, remote)
-		baseURL = prompt(r, out, "Base URL (e.g. https://gitlab.example.com)", defaultBase)
+		baseURL = prompt(r, out, "Base URL (e.g. https://gitlab.example.com)", defaultBaseURL(providerName, remote))
 	}
 
-	// 3c. Owner / organisation
-	ownerSuggestion := ""
+	ownerDefault := ""
 	if remote != nil {
-		ownerSuggestion = remote.Owner
+		ownerDefault = remote.Owner
 	}
-	owner := prompt(r, out, "Owner / organisation", ownerSuggestion)
+	owner := prompt(r, out, "Owner / organisation", ownerDefault)
 
-	// 3d. Repository name
-	repoSuggestion := ""
+	repoDefault := ""
 	if remote != nil {
-		repoSuggestion = remote.Repo
+		repoDefault = remote.Repo
 	}
-	repo := prompt(r, out, "Repository name", repoSuggestion)
+	repo := prompt(r, out, "Repository name", repoDefault)
 
-	// 3e. Token
-	token := prompt(r, out, "Personal access token", "")
+	// Token: show which env var to use if one was found, use it as silent default.
+	tokenLabel := "Personal access token"
+	if tokenEnv != "" {
+		tokenLabel = fmt.Sprintf("Personal access token [Enter to use $%s]", tokenEnv)
+	}
+	tokenInput := promptRaw(r, out, tokenLabel)
+	token := tokenInput
+	if token == "" {
+		token = detectedToken
+	}
 
-	// 3f. Watch interval
 	interval := prompt(r, out, "Watch poll interval (e.g. 30s, 1m)", "1m")
 
-	// 4. Build and write the config file.
-	cfg := ProjectConfig{
+	cfg := buildProjectConfig(providerName, baseURL, owner, repo, token, interval)
+	return writeAndReport(out, destPath, cfg)
+}
+
+// ── Auto-detect helpers ───────────────────────────────────────────────────────
+
+// detectToken looks for a provider token in well-known environment variables.
+// Returns the token value and the env var it came from.
+func detectToken(provider string) (token, envVar string) {
+	for _, name := range tokenEnvVars(provider) {
+		if v := os.Getenv(name); v != "" {
+			return v, name
+		}
+	}
+	return "", ""
+}
+
+// tokenEnvVars returns the candidate environment variable names for a provider.
+func tokenEnvVars(provider string) []string {
+	switch provider {
+	case "github":
+		return []string{"GITHUB_TOKEN", "GH_TOKEN"}
+	case "gitlab":
+		return []string{"GITLAB_TOKEN", "GL_TOKEN"}
+	case "gitea":
+		return []string{"GITEA_TOKEN"}
+	case "bitbucket":
+		return []string{"BITBUCKET_TOKEN", "BITBUCKET_APP_PASSWORD"}
+	default:
+		return nil
+	}
+}
+
+// printAutoSummary prints the auto-detected configuration before confirmation.
+func printAutoSummary(out io.Writer, remote *RemoteInfo, tokenEnv, destPath string) {
+	_, _ = fmt.Fprintln(out, "gtc — configuration automatique")
+	_, _ = fmt.Fprintln(out, strings.Repeat("─", 42))
+	_, _ = fmt.Fprintf(out, "  Provider  :  %s\n", remote.Provider)
+	if remote.Host != "" && needsBaseURL(remote.Provider) {
+		_, _ = fmt.Fprintf(out, "  Base URL  :  https://%s\n", remote.Host)
+	}
+	_, _ = fmt.Fprintf(out, "  Owner     :  %s\n", remote.Owner)
+	_, _ = fmt.Fprintf(out, "  Repo      :  %s\n", remote.Repo)
+	_, _ = fmt.Fprintf(out, "  Token     :  $%s ✓\n", tokenEnv)
+	_, _ = fmt.Fprintf(out, "  Interval  :  1m (défaut)\n")
+	_, _ = fmt.Fprintf(out, "  Dest      :  %s\n", destPath)
+	_, _ = fmt.Fprintln(out, "")
+}
+
+// buildProjectConfig assembles a ProjectConfig from individual fields.
+func buildProjectConfig(provider, baseURL, owner, repo, token, interval string) ProjectConfig {
+	return ProjectConfig{
 		Provider: ProviderBlock{
-			Name:    providerName,
+			Name:    provider,
 			BaseURL: baseURL,
 			Token:   token,
 			Owner:   owner,
 			Repo:    repo,
 		},
-		Watch: WatchBlock{
-			Interval: interval,
-		},
+		Watch: WatchBlock{Interval: interval},
 	}
+}
 
-	destPath := filepath.Join(root, ".gtc.yaml")
+// writeAndReport writes the config file and prints confirmation + gitignore tip.
+func writeAndReport(out io.Writer, destPath string, cfg ProjectConfig) error {
 	if err := writeConfig(destPath, cfg); err != nil {
 		return err
 	}
-
-	fmt.Fprintf(out, "\n✓ Config written to %s\n", destPath)
-
-	// 5. Remind the user to gitignore the file (token stored in plain text).
-	fmt.Fprintln(out, "\n⚠  The file contains your token in plain text.")
-	fmt.Fprintln(out, "   Add it to .gitignore to avoid committing credentials:")
-	fmt.Fprintln(out, "     echo '.gtc.yaml' >> .gitignore")
-
+	_, _ = fmt.Fprintf(out, "\n✓ Config written to %s\n", destPath)
+	_, _ = fmt.Fprintln(out, "\n⚠  The file contains your token in plain text.")
+	_, _ = fmt.Fprintln(out, "   Add it to .gitignore to avoid committing credentials:")
+	_, _ = fmt.Fprintln(out, "     echo '.gtc.yaml' >> .gitignore")
 	return nil
+}
+
+// promptRaw prints a label and reads a line without showing a default value.
+// Used for sensitive fields like tokens.
+func promptRaw(r *bufio.Reader, out io.Writer, label string) string {
+	_, _ = fmt.Fprintf(out, "  %s: ", label)
+	line, _ := r.ReadString('\n')
+	return strings.TrimSpace(line)
 }
 
 // ---------------------------------------------------------------------------
@@ -232,7 +328,7 @@ func writeConfig(path string, cfg ProjectConfig) error {
 	if err != nil {
 		return fmt.Errorf("creating %s: %w", path, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	enc := yaml.NewEncoder(f)
 	enc.SetIndent(2)
@@ -246,9 +342,9 @@ func writeConfig(path string, cfg ProjectConfig) error {
 // When the user submits an empty line, defaultVal is returned.
 func prompt(r *bufio.Reader, out io.Writer, label, defaultVal string) string {
 	if defaultVal != "" {
-		fmt.Fprintf(out, "  %s [%s]: ", label, defaultVal)
+		_, _ = fmt.Fprintf(out, "  %s [%s]: ", label, defaultVal)
 	} else {
-		fmt.Fprintf(out, "  %s: ", label)
+		_, _ = fmt.Fprintf(out, "  %s: ", label)
 	}
 	line, _ := r.ReadString('\n')
 	line = strings.TrimSpace(line)

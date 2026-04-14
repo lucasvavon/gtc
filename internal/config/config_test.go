@@ -369,7 +369,7 @@ func TestRunInteractiveInit_WritesConfig(t *testing.T) {
 	input := strings.NewReader("gitlab\nhttps://gitlab.example.com\nalice\nmyrepo\nglpat-abc\n2m\n")
 	var out strings.Builder
 
-	if err := RunInteractiveInit(input, &out); err != nil {
+	if err := RunInteractiveInit(input, &out, false); err != nil {
 		t.Fatalf("RunInteractiveInit: unexpected error: %v", err)
 	}
 
@@ -399,7 +399,7 @@ func TestRunInteractiveInit_NotInGitRepo(t *testing.T) {
 	t.Cleanup(func() { _ = os.Chdir(original) })
 	_ = os.Chdir(dir)
 
-	err := RunInteractiveInit(strings.NewReader(""), &strings.Builder{})
+	err := RunInteractiveInit(strings.NewReader(""), &strings.Builder{}, false)
 	if err == nil {
 		t.Fatal("expected error when not in a git repository, got nil")
 	}
@@ -411,7 +411,7 @@ func TestRunInteractiveInit_GitIgnoreReminder(t *testing.T) {
 	input := strings.NewReader("github\nalice\nmyrepo\nghp-tok\n1m\n")
 	var out strings.Builder
 
-	if err := RunInteractiveInit(input, &out); err != nil {
+	if err := RunInteractiveInit(input, &out, false); err != nil {
 		t.Fatalf("RunInteractiveInit: unexpected error: %v", err)
 	}
 
@@ -424,7 +424,7 @@ func TestRunInteractiveInit_FilePermissions(t *testing.T) {
 	root := makeFakeGitRepo(t, "")
 
 	input := strings.NewReader("github\nalice\nrepo\ntok\n1m\n")
-	if err := RunInteractiveInit(input, &strings.Builder{}); err != nil {
+	if err := RunInteractiveInit(input, &strings.Builder{}, false); err != nil {
 		t.Fatalf("RunInteractiveInit: %v", err)
 	}
 

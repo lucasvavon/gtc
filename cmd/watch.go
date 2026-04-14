@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/lucasvavon/gtc/internal/models"
+	"github.com/spf13/cobra"
 )
 
 // watch flags
@@ -47,9 +47,34 @@ Events can be filtered with --events (comma-separated list):
 			Interval: interval,
 		}
 
-		_ = p
-		_ = opts
-		fmt.Printf("watch (interval=%s events=%v): not yet implemented\n", watchInterval, kinds)
+		ch, err := p.Watch(cmd.Context(), opts)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("Watching %s (interval=%s", p.Name(), watchInterval)
+		if len(kinds) > 0 {
+			fmt.Printf(", events=%s", watchEvents)
+		}
+		fmt.Println(") — Ctrl-C to stop")
+
+		for e := range ch {
+			actor := ""
+			if e.Actor != "" {
+				actor = " by " + e.Actor
+			}
+			detail := ""
+			if e.Detail != "" {
+				detail = "  " + e.Detail
+			}
+			fmt.Printf("[%s] %-16s  %s%s%s\n",
+				e.Timestamp.Format("15:04:05"),
+				e.Kind,
+				e.Title,
+				actor,
+				detail,
+			)
+		}
 		return nil
 	},
 }
