@@ -255,11 +255,6 @@ func (g *GitHub) GetCIStatus(ctx context.Context, ref string) (*models.CIStatus,
 	return buildCIStatus(ref, cr.status, runs.runs), nil
 }
 
-// Watch is not yet implemented.
-func (g *GitHub) Watch(_ context.Context, _ models.WatchOptions) (<-chan models.Event, error) {
-	return nil, errors.New("github: Watch not yet implemented")
-}
-
 // ---------------------------------------------------------------------------
 // Mapping helpers
 // ---------------------------------------------------------------------------

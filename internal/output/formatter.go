@@ -75,21 +75,21 @@ func (p *Printer) PrintTable(headers []string, rows [][]string) {
 	for i, h := range headers {
 		upper[i] = strings.ToUpper(h)
 	}
-	fmt.Fprintln(tw, strings.Join(upper, "\t"))
+	_, _ = fmt.Fprintln(tw, strings.Join(upper, "\t"))
 
 	// Separator line
 	seps := make([]string, len(headers))
 	for i, h := range headers {
 		seps[i] = strings.Repeat("─", len(h))
 	}
-	fmt.Fprintln(tw, strings.Join(seps, "\t"))
+	_, _ = fmt.Fprintln(tw, strings.Join(seps, "\t"))
 
 	// Data rows
 	for _, row := range rows {
-		fmt.Fprintln(tw, strings.Join(row, "\t"))
+		_, _ = fmt.Fprintln(tw, strings.Join(row, "\t"))
 	}
 
-	tw.Flush()
+	_ = tw.Flush()
 }
 
 func (p *Printer) printJSON(v any) error {
