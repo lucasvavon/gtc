@@ -43,7 +43,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # ── Optionnel : activé uniquement si le secret est défini ──────────
-          # Homebrew tap  → repo github.com/lucasvavon/homebrew-gtc ✓
+          # Homebrew tap  → repo github.com/lucasvavon/homebrew-tap ✓
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           # Scoop bucket  → créer github.com/<vous>/scoop-bucket en premier
           SCOOP_TOKEN: ${{ secrets.SCOOP_TOKEN }}
